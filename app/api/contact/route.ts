@@ -12,7 +12,7 @@ const contactSchema = z.object({
 type ContactForm = z.infer<typeof contactSchema>
 
 // Mapear erros SMTP para mensagens amigáveis
-const getErrorMessage = (error: any, language: string = 'pt') => {
+const getErrorMessage = (error: unknown, language: string = 'pt'): string => {
   const messages = {
     pt: {
       EAUTH: 'Erro de autenticação SMTP. Verifique suas credenciais de email.',
@@ -25,32 +25,33 @@ const getErrorMessage = (error: any, language: string = 'pt') => {
       ECONNREFUSED: 'Could not connect to email server. Please try again later.',
       ETIMEDOUT: 'Email server connection timeout. Please try again.',
       default: 'Error sending email. Our team has been notified.',
-    }
+    },
   }
 
   const lang = messages[language as keyof typeof messages] || messages.en
-  const code = error.code as keyof typeof lang
 
-  if (code && code in lang) {
-    return lang[code]
+  if (error instanceof Error) {
+    const code = (error as NodeJS.ErrnoException).code as keyof typeof lang
+    if (code && code in lang) {
+      return lang[code]
+    }
   }
 
   return lang.default
 }
 
 // Configurar transportador SMTP
-const createTransporter = () => {
-  // Validar que todas as variáveis necessárias estão definidas
+const createTransporter = (): nodemailer.Transporter => {
   const requiredEnvVars = {
-    SMTP_HOST: process.env.SMTP_HOST,
-    SMTP_PORT: process.env.SMTP_PORT,
-    SMTP_USER: process.env.SMTP_USER,
-    SMTP_PASS: process.env.SMTP_PASS,
-    EMAIL_FROM: process.env.EMAIL_FROM,
+    SMTP_HOST: process.env['SMTP_HOST'],
+    SMTP_PORT: process.env['SMTP_PORT'],
+    SMTP_USER: process.env['SMTP_USER'],
+    SMTP_PASS: process.env['SMTP_PASS'],
+    EMAIL_FROM: process.env['EMAIL_FROM'],
   }
 
   const missing = Object.entries(requiredEnvVars)
-    .filter(([_, value]) => !value)
+    .filter(([, value]) => !value)
     .map(([key]) => key)
 
   if (missing.length > 0) {
@@ -58,21 +59,20 @@ const createTransporter = () => {
   }
 
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_PORT === '465', // true para 465, false para outras portas
+    host: process.env['SMTP_HOST'],
+    port: parseInt(process.env['SMTP_PORT'] || '587', 10),
+    secure: process.env['SMTP_PORT'] === '465',
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: process.env['SMTP_USER'],
+      pass: process.env['SMTP_PASS'],
     },
-    // Adicionar timeout
     connectionTimeout: 10000,
     socketTimeout: 10000,
   })
 }
 
 // Template de email para o proprietário
-const getOwnerEmailTemplate = (data: ContactForm) => {
+const getOwnerEmailTemplate = (data: ContactForm): string => {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #04653B 0%, #1A4D34 100%); padding: 30px; border-radius: 8px 8px 0 0; text-align: center;">
@@ -82,12 +82,12 @@ const getOwnerEmailTemplate = (data: ContactForm) => {
       <div style="background: #f5f5f5; padding: 30px; border-radius: 0 0 8px 8px;">
         <h2 style="color: #04653B; margin-top: 0;">Detalhes do Contacto:</h2>
         
-        <p><strong>Nome:</strong> ${data.name}</p>
-        <p><strong>Email:</strong> <a href="mailto:${data.email}">${data.email}</a></p>
+        <p><strong>Nome:</strong> ${escapeHtml(data.name)}</p>
+        <p><strong>Email:</strong> <a href="mailto:${escapeHtml(data.email)}">${escapeHtml(data.email)}</a></p>
         
         <h3 style="color: #04653B; margin-top: 30px;">Mensagem:</h3>
         <p style="background: #ffffff; padding: 15px; border-left: 4px solid #1EC5FA; border-radius: 4px;">
-          ${data.message.replace(/\n/g, '<br>')}
+          ${escapeHtml(data.message).replace(/\n/g, '<br>')}
         </p>
         
         <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
@@ -101,7 +101,7 @@ const getOwnerEmailTemplate = (data: ContactForm) => {
 }
 
 // Template de email para o cliente
-const getClientEmailTemplate = (name: string, language: string = 'pt') => {
+const getClientEmailTemplate = (name: string, language: string = 'pt'): string => {
   const templates = {
     pt: {
       subject: 'Obrigado pelo seu interesse - AgroFlow',
@@ -140,7 +140,7 @@ We look forward to showing you how we can help optimize your agricultural produc
         <p>${content.greeting}</p>
         
         <p style="color: #333; line-height: 1.6;">
-          ${content.body}
+          ${content.body.replace(/\n/g, '<br>')}
         </p>
         
         <div style="background: #ffffff; padding: 20px; border-radius: 8px; border-left: 4px solid #1EC5FA; margin: 30px 0;">
@@ -164,32 +164,55 @@ We look forward to showing you how we can help optimize your agricultural produc
   `
 }
 
+// Função para escapar HTML (segurança contra XSS)
+const escapeHtml = (text: string): string => {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  }
+  return text.replace(/[&<>"']/g, (char) => map[char] || char)
+}
+
 // Verificar configuração do SMTP
 async function verifySMTPConfig(): Promise<{ valid: boolean; error?: string }> {
   try {
     const transporter = createTransporter()
     await transporter.verify()
     return { valid: true }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro ao verificar SMTP:', error)
 
     let errorMessage = 'Erro desconhecido na configuração SMTP'
 
-    if (error.code === 'EAUTH') {
-      errorMessage = 'Erro de autenticação: Verifique SMTP_USER e SMTP_PASS no .env.local'
-    } else if (error.code === 'ECONNREFUSED') {
-      errorMessage = `Não conseguiu conectar a ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`
-    } else if (error.message) {
-      errorMessage = error.message
+    if (error instanceof Error) {
+      const nodeError = error as NodeJS.ErrnoException
+      if (nodeError.code === 'EAUTH') {
+        errorMessage = 'Erro de autenticação: Verifique SMTP_USER e SMTP_PASS no .env.local'
+      } else if (nodeError.code === 'ECONNREFUSED') {
+        errorMessage = `Não conseguiu conectar a ${process.env['SMTP_HOST']}:${process.env['SMTP_PORT']}`
+      } else if (error.message) {
+        errorMessage = error.message
+      }
     }
 
     return { valid: false, error: errorMessage }
   }
 }
 
-export async function POST(request: NextRequest) {
+interface ErrorResponse {
+  success: boolean
+  error: string
+  fields?: Record<string, string>
+  details?: string
+  debug?: string
+}
+
+// Handler POST
+export async function POST(request: NextRequest): Promise<NextResponse<ErrorResponse | { success: boolean; message: string }>> {
   try {
-    // Parse do body
     const body = await request.json()
 
     // Validação dos dados
@@ -218,8 +241,8 @@ export async function POST(request: NextRequest) {
 
     // Enviar email para o proprietário
     const ownerMailOptions = {
-      from: process.env.EMAIL_FROM,
-      to: process.env.EMAIL_TO,
+      from: process.env['EMAIL_FROM'],
+      to: process.env['EMAIL_TO'] || process.env['EMAIL_FROM'],
       subject: `Nova Solicitação de Demonstração - ${validatedData.name}`,
       html: getOwnerEmailTemplate(validatedData),
       replyTo: validatedData.email,
@@ -229,7 +252,7 @@ export async function POST(request: NextRequest) {
 
     // Enviar email de confirmação para o cliente
     const clientMailOptions = {
-      from: process.env.EMAIL_FROM,
+      from: process.env['EMAIL_FROM'],
       to: validatedData.email,
       subject:
         language === 'pt'
@@ -252,7 +275,14 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('Erro ao enviar email:', error)
-    const language = (await request.json()).language || 'pt'
+
+    let language = 'pt'
+    try {
+      const body = await request.json()
+      language = body.language || 'pt'
+    } catch {
+      // Se não conseguir fazer parse, usa padrão
+    }
 
     // Tratamento de erros de validação Zod
     if (error instanceof z.ZodError) {
@@ -305,7 +335,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Endpoint de healthcheck para verificar configuração
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const check = await verifySMTPConfig()
 
   if (check.valid) {

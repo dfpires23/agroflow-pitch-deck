@@ -32,9 +32,32 @@ const HEADER_CONTENT = {
   }
 }
 
+// Componente para renderizar bandeiras de forma consistente
+const FlagIcon = ({ language }: { language: 'pt' | 'en' }) => {
+  return (
+    <Box
+      sx={{
+        fontSize: '1.3rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 24,
+        height: 18,
+        overflow: 'hidden',
+        borderRadius: '1px',
+        // Forçar renderização consistente do emoji
+        fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif',
+        lineHeight: 1,
+      }}
+    >
+      {language === 'pt' ? '🇵🇹' : '🇬🇧'}
+    </Box>
+  )
+}
+
 export default function Header() {
   const { language, toggleLanguage } = useLanguage()
-  const { theme: currentTheme, toggleTheme } = useTheme() // Agora tipado corretamente
+  const { theme: currentTheme, toggleTheme } = useTheme()
   const muiTheme = useMUITheme()
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState<null | HTMLElement>(null)
   const content = HEADER_CONTENT[language]
@@ -257,15 +280,7 @@ export default function Header() {
             >
               <Button
                 onClick={toggleLanguage}
-                startIcon={
-                  <Box sx={{ 
-                    fontSize: '1.3rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                  }}>
-                    {language === 'pt' ? '🇵🇹' : '🇬🇧'}
-                  </Box>
-                }
+                startIcon={<FlagIcon language={language} />}
                 sx={{
                   color: muiTheme.palette.text.primary,
                   fontSize: '0.85rem',

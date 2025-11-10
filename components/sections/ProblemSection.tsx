@@ -1064,7 +1064,15 @@ export default function StyledProblemSection() {
         <Box sx={{ mb: 10 }}>
           <Grid container spacing={4}>
             <Grid item xs={12} md={6}>
-              <FeaturedArticle problem={content.problems[0]} language={language} theme={theme} />
+              {content.problems[0] ? (
+                <FeaturedArticle problem={content.problems[0]} language={language} theme={theme} />
+              ) : (
+                <Paper sx={{ p: 4, textAlign: 'center', background: 'rgba(255,255,255,0.1)' }}>
+                  <Typography color="text.secondary">
+                    {language === 'pt' ? 'Dados não disponíveis' : 'Data not available'}
+                  </Typography>
+                </Paper>
+              )}
             </Grid>
             <Grid item xs={12} md={6}>
               <Stack spacing={3} sx={{ height: '100%' }}>

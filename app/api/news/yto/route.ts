@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     console.log('🎬 Buscando vídeos para query:', query)
 
     // Tentar YouTube Data API primeiro
-    const apiKey = process.env.YOUTUBE_API_KEY
+    const apiKey = process.env['YOUTUBE_API_KEY']
     
     if (apiKey) {
       try {
